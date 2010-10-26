@@ -1,9 +1,17 @@
 module Synthesis
   class AssetPackage
+    require 'Util'
+    customer = Util.customer
 
-    @asset_base_path    = "#{Rails.root}/public"
-    @asset_packages_yml = File.exists?("#{Rails.root}/config/asset_packages.yml") ? YAML.load_file("#{Rails.root}/config/asset_packages.yml") : nil
-  
+    @asset_base_path =  "#{Rails.root}/public"
+    if File.exists?("#{Rails.root}/config/environments/#{customer}/asset_packages.yml")
+      @asset_packages_yml = YAML.load_file("#{Rails.root}/config/environments/#{customer}/asset_packages.yml")
+    elsif File.exists?("#{Rails.root}/config/asset_packages.yml")
+      @asset_packages_yml = YAML.load_file("#{Rails.root}/config/asset_packages.yml")
+    else
+      @asset_packages_yml = nil
+    end
+    
     # singleton methods
     class << self
       attr_accessor :asset_base_path,
@@ -99,9 +107,14 @@ module Synthesis
       @sources = package_hash[package_hash.keys.first]
       @asset_type = asset_type
       @asset_path = "#{self.class.asset_base_path}/#{@asset_type}#{@target_dir.gsub(/^(.+)$/, '/\1')}"
+      @asset_web_path = "/#{@asset_type}#{@target_dir.gsub(/^(.+)$/, '/\1')}"
       @extension = get_extension
       @file_name = "#{@target}_packaged.#{@extension}"
       @full_path = File.join(@asset_path, @file_name)
+
+      customer = Util.customer
+      app_config = Util.app_config customer
+      @asset_host = (app_config['assets'] && app_config['assets']['host']) ? "http://#{app_config['assets']['host']}" : nil
     end
   
     def package_exists?
@@ -136,10 +149,27 @@ module Synthesis
       end
 
       def merged_file
-        merged_file = ""
-        @sources.each {|s| 
-          File.open("#{@asset_path}/#{s}.#{@extension}", "r") { |f| 
+        merged_file = ""      
+        @sources.each {|s|
+          src = s.starts_with?('/') ? "#{Rails.root}/public/#{s}.#{@extension}" : "#{@asset_path}/#{s}.#{@extension}"
+          File.open("#{src}", "r") { |f| 
             merged_file += f.read + "\n" 
+          }
+        }
+        merged_file
+      end
+
+      def merged_css_file
+        merged_file = ""
+        @sources.each {|s|
+          src = s.starts_with?('/') ? "#{Rails.root}/public#{s}.#{@extension}" : "#{@asset_path}/#{s}.#{@extension}"
+          web_src = s.starts_with?('/') ? s.gsub(/\/[-_.\w]+$/, '') : @asset_web_path
+          File.open("#{src}", "r") { |f|
+            content = f.read
+            content.gsub! /url[\s]*\([\s'"]*([-_.\/a-z]+)[\s'"]*\)/, 'url(\1)'
+            content.gsub! /(url\((?!\/))/, "url(#{web_src}/"
+            content.gsub! /url\(/, "url(#{@asset_host}" if @asset_host              
+            merged_file += content+ "\n" 
           }
         }
         merged_file
@@ -148,7 +178,7 @@ module Synthesis
       def compressed_file
         case @asset_type
           when "javascripts" then compress_js(merged_file)
-          when "stylesheets" then compress_css(merged_file)
+          when "stylesheets" then compress_css(merged_css_file)
         end
       end
 

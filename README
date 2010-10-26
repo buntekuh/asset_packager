@@ -1,3 +1,11 @@
+= buntekuh branch
+
+This branch includes a few changes that are special to our production site. In our rails app we encounter the requirement to serve different content to different customers. The changes are therefore tailored to our specific customisation needs.
+
+It does however address a few issues, that may be interesting to others:
+* It is possible to compress css files from different directories, because all url() directives are updated to absolute paths
+* If a asset_host is defined, the domain of the asset_host is included in these locations, thus images that are referenced from the css are served by the asset_host
+
 = AssetPackager
 
 JavaScript and CSS Asset Compression for Production Rails Apps
